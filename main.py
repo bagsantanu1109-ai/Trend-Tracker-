@@ -12,14 +12,26 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 ENV_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
 BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
 
+import random
+import re
+
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
+    
+    # Load tags
+    try:
+        with open("bangali_creators.txt", "r") as f:
+            all_tags = [line.strip() for line in f if line.strip()]
+    except Exception:
+        all_tags = ["kolkata", "bengali", "calcutta"]
+        
+    selected_tags = random.sample(all_tags, min(5, len(all_tags)))
+    direct_urls = [f"https://www.instagram.com/explore/tags/{t}/" for t in selected_tags]
+    print(f"Scraping tags: {selected_tags}")
+
     run_input = {
-        "directUrls": [
-            "https://www.instagram.com/explore/tags/kolkata/",
-            "https://www.instagram.com/explore/tags/india/"
-        ],
-        "resultsLimit": 100, 
+        "directUrls": direct_urls,
+        "resultsLimit": 50, # 50 per tag = 250 total, fast and cheap
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
     dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
@@ -27,6 +39,7 @@ def get_instagram_trends():
     
     filtered = []
     now = datetime.now(timezone.utc)
+    new_learned_tags = set()
     
     for i in items:
         # Filter strictly for video/reels
@@ -53,14 +66,37 @@ def get_instagram_trends():
             continue
             
         short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
+        caption = i.get("caption", "")
         
         filtered.append({
             "url": f"https://www.instagram.com/reel/{short_code}/",
-            "caption": i.get("caption", ""),
+            "caption": caption,
             "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
             "views": views
         })
         
+        # Self-learning hashtags
+        found_tags = i.get("hashtags", [])
+        if not found_tags:
+            found_tags = re.findall(r"#(\w+)", caption)
+            
+        for tag in found_tags:
+            tag_lower = tag.lower()
+            # Only learn strictly relevant local tags
+            if any(k in tag_lower for k in ["kolkata", "bengali", "calcutta", "howrah", "bong"]):
+                if tag_lower not in all_tags:
+                    new_learned_tags.add(tag_lower)
+                    
+    # Save newly learned tags
+    if new_learned_tags:
+        print(f"Learned {len(new_learned_tags)} new tags! Adding to bangali_creators.txt")
+        all_tags.extend(list(new_learned_tags))
+        # Deduplicate and sort
+        all_tags = sorted(list(set(all_tags)))
+        with open("bangali_creators.txt", "w") as f:
+            for tag in all_tags:
+                f.write(f"{tag}\n")
+                
     return filtered
 
 def summarize_trends(data):
