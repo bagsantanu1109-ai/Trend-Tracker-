@@ -1,12 +1,16 @@
 import os
 import requests
-from google import genai
 from apify_client import ApifyClient
+from datetime import datetime, timezone, timedelta
 
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# Read the OpenRouter key (if the user updated GEMINI_API_KEY secret, fallback to that)
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+ENV_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
+BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
 
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
@@ -23,7 +27,6 @@ def get_instagram_trends():
     items = list(client.dataset(dataset_id).iterate_items())
     
     filtered = []
-    from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
     
     for i in items:
@@ -55,7 +58,6 @@ def summarize_trends(data):
     if not data:
         return "No new non-celeb Indian Instagram trends found in the last 24 hours! 🤫"
         
-    client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"""
     Analyze this raw JSON data of Instagram reels from Indian influencers (last 24 hours): 
     {data}
@@ -69,16 +71,37 @@ def summarize_trends(data):
     
     Format as a punchy, clean Telegram report with emojis. Keep it readable.
     """
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=prompt
-    )
-    return response.text
-
-# A list of Chat IDs to broadcast to. 
-# We include the ones from the environment variable (if any), plus the hardcoded ones.
-ENV_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
-BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
+    
+    # List of free OpenRouter models to cycle through
+    free_models = [
+        "deepseek/deepseek-chat:free",
+        "meta-llama/llama-3-8b-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+        "google/gemini-2.0-flash-exp:free"
+    ]
+    
+    for model in free_models:
+        print(f"Attempting to generate report with {model}...")
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                print(f"{model} failed: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"{model} encountered an exception: {e}")
+            
+    return "⚠️ Failed to generate AI report. All free OpenRouter models hit their rate limits or failed."
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
