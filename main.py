@@ -74,14 +74,13 @@ def summarize_trends(data):
     
     # List of free OpenRouter models to cycle through
     free_models = [
-        "qwen/qwen3.8-27b:free",
-        "google/gemma-4-31b-it:free",
-        "thinkingmachines/inkling:free",
-        "liquid/lfm-2.5-2.6b:free"
+        "google/gemma-4-26b-a4b-it:free",
+        "nvidia/nemotron-3.5-lightning:free",
+        "qwen/qwen3.8-27b:free"
     ]
     
     for model in free_models:
-        print(f"Attempting to generate report with {model}...")
+        print(f"Attempting to generate report with {model}...", flush=True)
         try:
             response = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
@@ -92,7 +91,8 @@ def summarize_trends(data):
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}]
-                }
+                },
+                timeout=45
             )
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
