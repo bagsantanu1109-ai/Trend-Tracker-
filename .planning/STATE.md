@@ -9,3 +9,7 @@
 - User needs to create a private repository on GitHub and commit these files.
 - User needs to set up the repository secrets (`APIFY_TOKEN`, `GEMINI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) as outlined in the documentation.
 - Run the GitHub Actions workflow to test the automation pipeline.
+
+- Created the github repository manually and pushed code to it.
+
+- Configured GitHub Secrets (APIFY_TOKEN, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) programmatically.

@@ -1,6 +1,6 @@
 import os
 import requests
-import google.generativeai as genai
+from google import genai
 from apify_client import ApifyClient
 
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
@@ -15,14 +15,20 @@ def get_instagram_trends():
         "resultsLimit": 20, 
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
-    items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+    dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
+    items = list(client.dataset(dataset_id).iterate_items())
     return [{"caption": i.get("caption"), "audio": i.get("musicInfo", {}).get("musicName")} for i in items]
 
 def summarize_trends(data):
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    if not data:
+        return "No new Instagram trends found today! 🤫"
+        
+    client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"Analyze this raw JSON from Instagram reels: {data}. Identify recurring audio tracks and themes. Write a short, punchy report for Telegram with emojis."
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt
+    )
     return response.text
 
 def send_telegram_message(text):
