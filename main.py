@@ -26,7 +26,7 @@ def summarize_trends(data):
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"Analyze this raw JSON from Instagram reels: {data}. Identify recurring audio tracks and themes. Write a short, punchy report for Telegram with emojis."
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.8-flash",
         contents=prompt
     )
     return response.text
