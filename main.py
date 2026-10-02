@@ -25,13 +25,13 @@ def get_instagram_trends():
     except Exception:
         all_tags = ["kolkata", "bengali", "calcutta"]
         
-    selected_tags = random.sample(all_tags, min(5, len(all_tags)))
+    selected_tags = random.sample(all_tags, min(15, len(all_tags)))
     direct_urls = [f"https://www.instagram.com/explore/tags/{t}/" for t in selected_tags]
     print(f"Scraping tags: {selected_tags}")
 
     run_input = {
         "directUrls": direct_urls,
-        "resultsLimit": 50, # 50 per tag = 250 total, fast and cheap
+        "resultsLimit": 60, # 60 per tag * 15 tags = 900 reels analyzed daily!
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
     dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
