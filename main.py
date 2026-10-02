@@ -16,9 +16,9 @@ def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
     run_input = {
         "directUrls": [
-            "https://www.instagram.com/explore/tags/indianreels/",
-            "https://www.instagram.com/explore/tags/mumbaireels/",
-            "https://www.instagram.com/explore/tags/delhireels/"
+            "https://www.instagram.com/explore/tags/kolkatareels/",
+            "https://www.instagram.com/explore/tags/kolkatainfluencer/",
+            "https://www.instagram.com/explore/tags/bengalireels/"
         ],
         "resultsLimit": 100, 
     }
@@ -30,6 +30,10 @@ def get_instagram_trends():
     now = datetime.now(timezone.utc)
     
     for i in items:
+        # Filter strictly for video/reels
+        if i.get("productType") != "clips" and not i.get("isVideo"):
+            continue
+            
         # Filter for recent 24 hours
         ts_str = i.get("timestamp")
         if ts_str:
@@ -45,11 +49,17 @@ def get_instagram_trends():
         if owner.get("is_verified") or owner.get("followersCount", 0) > 1000000:
             continue
             
+        views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
+        if views == 0 or views == -1:
+            continue
+            
+        short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
+        
         filtered.append({
-            "url": i.get("url"),
+            "url": f"https://www.instagram.com/reel/{short_code}/",
             "caption": i.get("caption", ""),
             "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
-            "views": i.get("videoViewCount", 0) or i.get("playCount", 0)
+            "views": views
         })
         
     return filtered
