@@ -42,8 +42,18 @@ def send_telegram_message(text):
     for chat_id in BROADCAST_CHAT_IDS:
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
         try:
-            requests.post(url, json=payload)
-            print(f"Sent message to {chat_id}")
+            res = requests.post(url, json=payload)
+            if res.status_code != 200:
+                print(f"Failed to send Markdown to {chat_id}: {res.text}. Trying plain text...")
+                # Fallback to plain text
+                payload = {"chat_id": chat_id, "text": text}
+                res2 = requests.post(url, json=payload)
+                if res2.status_code == 200:
+                    print(f"Sent plain text message to {chat_id}")
+                else:
+                    print(f"Completely failed to send to {chat_id}: {res2.text}")
+            else:
+                print(f"Sent message to {chat_id}")
         except Exception as e:
             print(f"Failed to send to {chat_id}: {e}")
 
