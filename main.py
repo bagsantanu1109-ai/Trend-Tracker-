@@ -48,7 +48,7 @@ def get_instagram_trends():
         filtered.append({
             "url": i.get("url"),
             "caption": i.get("caption", ""),
-            "audio": i.get("musicInfo", {}).get("musicName", "Original Audio"),
+            "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
             "views": i.get("videoViewCount", 0) or i.get("playCount", 0)
         })
         
@@ -74,10 +74,10 @@ def summarize_trends(data):
     
     # List of free OpenRouter models to cycle through
     free_models = [
-        "deepseek/deepseek-chat:free",
-        "meta-llama/llama-3-8b-instruct:free",
-        "mistralai/mistral-7b-instruct:free",
-        "google/gemini-2.0-flash-exp:free"
+        "qwen/qwen3.8-27b:free",
+        "google/gemma-4-31b-it:free",
+        "thinkingmachines/inkling:free",
+        "liquid/lfm-2.5-2.6b:free"
     ]
     
     for model in free_models:
