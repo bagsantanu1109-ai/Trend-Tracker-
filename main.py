@@ -37,43 +37,59 @@ def get_instagram_trends():
     dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
     items = list(client.dataset(dataset_id).iterate_items())
     
-    filtered = []
     now = datetime.now(timezone.utc)
-    new_learned_tags = set()
     
-    for i in items:
-        # Filter strictly for video/reels
-        if i.get("productType") != "clips" and not i.get("isVideo"):
-            continue
-            
-        # Filter for recent 24 hours
-        ts_str = i.get("timestamp")
-        if ts_str:
-            try:
-                dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                if now - dt > timedelta(hours=24):
-                    continue
-            except Exception:
-                pass
+    def extract_reels(raw_items, strict=True):
+        res = []
+        for i in raw_items:
+            # Always ensure it's a video/reel
+            if i.get("productType") != "clips" and not i.get("isVideo"):
+                continue
                 
-        # Filter out celebs
-        owner = i.get("owner", {})
-        if owner.get("is_verified") or owner.get("followersCount", 0) > 1000000:
-            continue
+            if strict:
+                # Filter for recent 24 hours
+                ts_str = i.get("timestamp")
+                if ts_str:
+                    try:
+                        dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                        if now - dt > timedelta(hours=24):
+                            continue
+                    except Exception:
+                        pass
+                        
+                # Filter out celebs
+                owner = i.get("owner", {})
+                if owner.get("is_verified") or owner.get("followersCount", 0) > 1000000:
+                    continue
+                    
+                views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
+                if views == 0 or views == -1:
+                    continue
+            else:
+                views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
+
+            short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
+            caption = i.get("caption", "")
             
-        views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
-        if views == 0 or views == -1:
-            continue
-            
-        short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
-        caption = i.get("caption", "")
+            res.append({
+                "url": f"https://www.instagram.com/reel/{short_code}/",
+                "caption": caption,
+                "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
+                "views": views,
+                "_raw": i # pass raw item for tag learning
+            })
+        return res
+
+    filtered = extract_reels(items, strict=True)
+    if not filtered:
+        print("Strict filtering returned 0 reels. Falling back to scraping whole Instagram (removing filters).")
+        filtered = extract_reels(items, strict=False)
         
-        filtered.append({
-            "url": f"https://www.instagram.com/reel/{short_code}/",
-            "caption": caption,
-            "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
-            "views": views
-        })
+    new_learned_tags = set()
+    for f_item in filtered:
+        i = f_item["_raw"]
+        del f_item["_raw"] # remove from final data to save tokens
+        caption = f_item["caption"]
         
         # Self-learning hashtags
         found_tags = i.get("hashtags", [])
@@ -82,7 +98,6 @@ def get_instagram_trends():
             
         for tag in found_tags:
             tag_lower = tag.lower()
-            # Only learn strictly relevant local tags
             if any(k in tag_lower for k in ["kolkata", "bengali", "calcutta", "howrah", "bong"]):
                 if tag_lower not in all_tags:
                     new_learned_tags.add(tag_lower)
