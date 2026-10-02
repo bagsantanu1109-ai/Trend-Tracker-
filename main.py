@@ -15,9 +15,10 @@ BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
     run_input = {
-        "search": "Kolkata",
-        "searchType": "place",
-        "searchLimit": 1,
+        "directUrls": [
+            "https://www.instagram.com/explore/tags/kolkata/",
+            "https://www.instagram.com/explore/tags/india/"
+        ],
         "resultsLimit": 100, 
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
