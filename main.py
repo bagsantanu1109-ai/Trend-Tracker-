@@ -57,13 +57,9 @@ def get_instagram_trends():
                     pass
 
             if strict:
-                # Filter out celebs
-                owner = i.get("owner", {})
-                if owner.get("is_verified") or owner.get("followersCount", 0) > 1000000:
-                    continue
-                    
+                # We use a strict view minimum as a proxy for follower count
                 views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
-                if views == 0 or views == -1:
+                if views < 50000:
                     continue
             else:
                 views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
