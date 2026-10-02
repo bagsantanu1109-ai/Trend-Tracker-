@@ -2,7 +2,7 @@ name: Daily Instagram Trend Report
 
 on:
   schedule:
-    - cron: '0 8 * * *' # Runs at 8:00 AM UTC daily
+    - cron: '30 0 * * *' # Runs at 6:00 AM IST (00:30 UTC) daily
   workflow_dispatch:
 
 jobs:
