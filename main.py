@@ -11,20 +11,64 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
     run_input = {
-        "hashtags": ["trendingaudio", "instatrends"],
-        "resultsLimit": 20, 
+        "directUrls": [
+            "https://www.instagram.com/explore/tags/indianreels/",
+            "https://www.instagram.com/explore/tags/mumbaireels/",
+            "https://www.instagram.com/explore/tags/delhireels/"
+        ],
+        "resultsLimit": 100, 
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
     dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
     items = list(client.dataset(dataset_id).iterate_items())
-    return [{"caption": i.get("caption"), "audio": i.get("musicInfo", {}).get("musicName")} for i in items]
+    
+    filtered = []
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    
+    for i in items:
+        # Filter for recent 24 hours
+        ts_str = i.get("timestamp")
+        if ts_str:
+            try:
+                dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                if now - dt > timedelta(hours=24):
+                    continue
+            except Exception:
+                pass
+                
+        # Filter out celebs
+        owner = i.get("owner", {})
+        if owner.get("is_verified") or owner.get("followersCount", 0) > 1000000:
+            continue
+            
+        filtered.append({
+            "url": i.get("url"),
+            "caption": i.get("caption", ""),
+            "audio": i.get("musicInfo", {}).get("musicName", "Original Audio"),
+            "views": i.get("videoViewCount", 0) or i.get("playCount", 0)
+        })
+        
+    return filtered
 
 def summarize_trends(data):
     if not data:
-        return "No new Instagram trends found today! 🤫"
+        return "No new non-celeb Indian Instagram trends found in the last 24 hours! 🤫"
         
     client = genai.Client(api_key=GEMINI_API_KEY)
-    prompt = f"Analyze this raw JSON from Instagram reels: {data}. Identify recurring audio tracks and themes. Write a short, punchy report for Telegram with emojis."
+    prompt = f"""
+    Analyze this raw JSON data of Instagram reels from Indian influencers (last 24 hours): 
+    {data}
+    
+    Provide a complete analysis for my next reel:
+    1. 🏆 Top 5 reels with the most views (include a tiny summary of their caption).
+    2. 🎵 5 most used songs/audio tracks.
+    3. 🔑 All the best keywords/hashtags for good visibility.
+    4. 🧠 Complete analysis and patterns observed (what is working right now?).
+    5. 💡 A solid, concrete idea for my next reel based on these trends.
+    
+    Format as a punchy, clean Telegram report with emojis. Keep it readable.
+    """
     response = client.models.generate_content(
         model="gemini-3.8-flash",
         contents=prompt
