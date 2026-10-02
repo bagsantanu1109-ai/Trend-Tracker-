@@ -46,17 +46,17 @@ def get_instagram_trends():
             if i.get("productType") != "clips" and not i.get("isVideo"):
                 continue
                 
+            # Keep ONLY 1 filter: posted within 24 hrs (Always applied)
+            ts_str = i.get("timestamp")
+            if ts_str:
+                try:
+                    dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                    if now - dt > timedelta(hours=24):
+                        continue
+                except Exception:
+                    pass
+
             if strict:
-                # Filter for recent 24 hours
-                ts_str = i.get("timestamp")
-                if ts_str:
-                    try:
-                        dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                        if now - dt > timedelta(hours=24):
-                            continue
-                    except Exception:
-                        pass
-                        
                 # Filter out celebs
                 owner = i.get("owner", {})
                 if owner.get("is_verified") or owner.get("followersCount", 0) > 1000000:
@@ -76,7 +76,7 @@ def get_instagram_trends():
                 "caption": caption,
                 "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
                 "views": views,
-                "_raw": i # pass raw item for tag learning
+                "_raw": i 
             })
         return res
 
