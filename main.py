@@ -31,10 +31,21 @@ def summarize_trends(data):
     )
     return response.text
 
+# A list of Chat IDs to broadcast to. 
+# We include the ones from the environment variable (if any), plus the hardcoded ones.
+ENV_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
+BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
+
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    requests.post(url, json=payload)
+    
+    for chat_id in BROADCAST_CHAT_IDS:
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        try:
+            requests.post(url, json=payload)
+            print(f"Sent message to {chat_id}")
+        except Exception as e:
+            print(f"Failed to send to {chat_id}: {e}")
 
 if __name__ == "__main__":
     raw_data = get_instagram_trends()
