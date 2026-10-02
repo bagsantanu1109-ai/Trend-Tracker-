@@ -15,11 +15,9 @@ BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
     run_input = {
-        "directUrls": [
-            "https://www.instagram.com/explore/tags/kolkatareels/",
-            "https://www.instagram.com/explore/tags/kolkatainfluencer/",
-            "https://www.instagram.com/explore/tags/bengalireels/"
-        ],
+        "search": "Kolkata",
+        "searchType": "place",
+        "searchLimit": 1,
         "resultsLimit": 100, 
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
@@ -69,7 +67,7 @@ def summarize_trends(data):
         return "No new non-celeb Indian Instagram trends found in the last 24 hours! 🤫"
         
     prompt = f"""
-    Analyze this raw JSON data of Instagram reels from Indian influencers (last 24 hours): 
+    Analyze this raw JSON data of Instagram reels from Kolkata creators (last 24 hours): 
     {data}
     
     Provide a complete analysis for my next reel:
