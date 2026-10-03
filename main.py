@@ -68,7 +68,7 @@ def get_instagram_trends():
 
 def summarize_trends(data):
     if not data:
-        return "No new non-celeb Indian Instagram trends found in the last 24 hours! 🤫"
+        return "No new reels were found from your target profiles in the last 24 hours! 🤫"
         
     prompt = f"""
     Analyze this raw JSON data of Instagram reels from Kolkata creators (last 24 hours): 
