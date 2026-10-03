@@ -2,9 +2,10 @@ import os
 import requests
 from apify_client import ApifyClient
 from datetime import datetime, timezone, timedelta
+import random
+import re
 
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
-# Read the OpenRouter key (if the user updated GEMINI_API_KEY secret, fallback to that)
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -12,13 +13,9 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 ENV_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
 BROADCAST_CHAT_IDS = set(ENV_CHAT_IDS + ["8300734497", "1326228475"])
 
-import random
-import re
-
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
     
-    # Load target profiles
     try:
         with open("target_profiles.txt", "r") as f:
             profiles = [line.strip() for line in f if line.strip()]
@@ -29,7 +26,7 @@ def get_instagram_trends():
 
     run_input = {
         "directUrls": profiles,
-        "resultsLimit": 20, # 20 latest posts per profile is usually enough to cover 24 hours
+        "resultsLimit": 20, 
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
     dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
@@ -39,21 +36,21 @@ def get_instagram_trends():
     filtered = []
     
     for i in items:
-        # Always ensure it's a video/reel
         if i.get("productType") != "clips" and not i.get("isVideo"):
             continue
             
-        # ONLY 1 filter: posted within 24 hrs
         ts_str = i.get("timestamp")
         if ts_str:
             try:
                 dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                if now - dt > timedelta(hours=24):
+                if now - dt > timedelta(days=7):
                     continue
             except Exception:
                 pass
 
         views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
+        likes = i.get("likesCount") or 0
+        comments = i.get("commentsCount") or 0
         short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
         caption = i.get("caption", "")
         
@@ -61,30 +58,49 @@ def get_instagram_trends():
             "url": f"https://www.instagram.com/reel/{short_code}/",
             "caption": caption,
             "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
-            "views": views
+            "views": views,
+            "likes": likes,
+            "comments": comments
         })
 
+    filtered.sort(key=lambda x: x["views"], reverse=True)
     return filtered
+
+def generate_prelim_report(data):
+    if not data:
+        return "No new reels were found from your target profiles in the last week! 🤫"
+        
+    top_5 = data[:5]
+    report = "📊 *Preliminary Analysis: Top 5 Reels (Last 7 Days)*\n\n"
+    
+    for idx, item in enumerate(top_5, 1):
+        report += f"*{idx}.* [Watch Reel]({item['url']})\n"
+        report += f"👀 Views: {item['views']} | ❤️ Likes: {item['likes']} | 💬 Comments: {item['comments']}\n"
+        cap = item['caption'][:60].replace('\n', ' ') + "..." if item['caption'] else "No caption"
+        report += f"📝 _{cap}_\n\n"
+        
+    report += "🤖 _AI is now analyzing keywords, hashtags, and generating ideas..._"
+    return report
 
 def summarize_trends(data):
     if not data:
-        return "No new reels were found from your target profiles in the last 24 hours! 🤫"
+        return None
         
     prompt = f"""
-    Analyze this raw JSON data of Instagram reels from Kolkata creators (last 24 hours): 
+    Analyze this raw JSON data of Instagram reels from my target creators (posted in the last 7 days).
+    The data is already sorted by views:
     {data}
     
-    Provide a complete analysis for my next reel:
-    1. 🏆 Top 5 reels with the most views (include a tiny summary of their caption).
-    2. 🎵 5 most used songs/audio tracks.
-    3. 🔑 All the best keywords/hashtags for good visibility.
-    4. 🧠 Complete analysis and patterns observed (what is working right now?).
-    5. 💡 A solid, concrete idea for my next reel based on these trends.
+    The basic stats (views, likes, top 5) have already been reported. Your job is to dive deeper into the strategy.
+    Provide a complete strategic analysis:
+    1. 🎵 Best audio tracks/music being used.
+    2. 🔑 The most effective keywords and hashtags used by these top performers.
+    3. 🧠 Patterns in the captions or video styles (what makes them successful?).
+    4. 💡 2-3 concrete, highly-specific ideas for my next reel based on this data.
     
-    Format as a punchy, clean Telegram report with emojis. Keep it readable.
+    Format as a punchy, clean Telegram report with emojis. 
     """
     
-    # List of free OpenRouter models to cycle through
     free_models = [
         "google/gemma-4-26b-a4b-it:free",
         "nvidia/nemotron-3.5-lightning:free",
@@ -128,13 +144,10 @@ def send_telegram_message(text):
             res = requests.post(url, json=payload)
             if res.status_code != 200:
                 print(f"Failed to send Markdown to {chat_id}: {res.text}. Trying plain text...")
-                # Fallback to plain text
                 payload = {"chat_id": chat_id, "text": text}
                 res2 = requests.post(url, json=payload)
                 if res2.status_code == 200:
                     print(f"Sent plain text message to {chat_id}")
-                else:
-                    print(f"Completely failed to send to {chat_id}: {res2.text}")
             else:
                 print(f"Sent message to {chat_id}")
         except Exception as e:
@@ -142,5 +155,11 @@ def send_telegram_message(text):
 
 if __name__ == "__main__":
     raw_data = get_instagram_trends()
-    summary = summarize_trends(raw_data)
-    send_telegram_message(summary)
+    
+    prelim_msg = generate_prelim_report(raw_data)
+    send_telegram_message(prelim_msg)
+    
+    if raw_data:
+        summary = summarize_trends(raw_data)
+        if summary:
+            send_telegram_message(summary)
