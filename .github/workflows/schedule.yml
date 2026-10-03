@@ -30,10 +30,3 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
 
-      - name: Commit new learned hashtags
-        run: |
-          git config --global user.name "TrendTracker-Bot"
-          git config --global user.email "bot@trendtracker.com"
-          git add bangali_creators.txt || true
-          git commit -m "Auto-learn new hashtags [skip ci]" || echo "No changes to commit"
-          git push || echo "Failed to push"

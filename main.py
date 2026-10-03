@@ -18,96 +18,52 @@ import re
 def get_instagram_trends():
     client = ApifyClient(APIFY_TOKEN)
     
-    # Load tags
+    # Load target profiles
     try:
-        with open("bangali_creators.txt", "r") as f:
-            all_tags = [line.strip() for line in f if line.strip()]
+        with open("target_profiles.txt", "r") as f:
+            profiles = [line.strip() for line in f if line.strip()]
     except Exception:
-        all_tags = ["kolkata", "bengali", "calcutta"]
+        profiles = ["https://www.instagram.com/instagram/"]
         
-    selected_tags = random.sample(all_tags, min(15, len(all_tags)))
-    direct_urls = [f"https://www.instagram.com/explore/tags/{t}/" for t in selected_tags]
-    print(f"Scraping tags: {selected_tags}")
+    print(f"Scraping profiles: {profiles}")
 
     run_input = {
-        "directUrls": direct_urls,
-        "resultsLimit": 60, # 60 per tag * 15 tags = 900 reels analyzed daily!
+        "directUrls": profiles,
+        "resultsLimit": 20, # 20 latest posts per profile is usually enough to cover 24 hours
     }
     run = client.actor("apify/instagram-scraper").call(run_input=run_input)
     dataset_id = run["defaultDatasetId"] if isinstance(run, dict) else run.default_dataset_id
     items = list(client.dataset(dataset_id).iterate_items())
     
     now = datetime.now(timezone.utc)
+    filtered = []
     
-    def extract_reels(raw_items, strict=True):
-        res = []
-        for i in raw_items:
-            # Always ensure it's a video/reel
-            if i.get("productType") != "clips" and not i.get("isVideo"):
-                continue
-                
-            # Keep ONLY 1 filter: posted within 24 hrs (Always applied)
-            ts_str = i.get("timestamp")
-            if ts_str:
-                try:
-                    dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                    if now - dt > timedelta(hours=24):
-                        continue
-                except Exception:
-                    pass
-
-            if strict:
-                # We use a strict view minimum as a proxy for follower count
-                views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
-                if views < 50000:
+    for i in items:
+        # Always ensure it's a video/reel
+        if i.get("productType") != "clips" and not i.get("isVideo"):
+            continue
+            
+        # ONLY 1 filter: posted within 24 hrs
+        ts_str = i.get("timestamp")
+        if ts_str:
+            try:
+                dt = datetime.strptime(ts_str.split(".")[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                if now - dt > timedelta(hours=24):
                     continue
-            else:
-                views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
+            except Exception:
+                pass
 
-            short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
-            caption = i.get("caption", "")
-            
-            res.append({
-                "url": f"https://www.instagram.com/reel/{short_code}/",
-                "caption": caption,
-                "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
-                "views": views,
-                "_raw": i 
-            })
-        return res
+        views = i.get("videoViewCount") or i.get("playCount") or i.get("viewCount") or 0
+        short_code = i.get("shortCode") or i.get("url", "").rstrip("/").split("/")[-1]
+        caption = i.get("caption", "")
+        
+        filtered.append({
+            "url": f"https://www.instagram.com/reel/{short_code}/",
+            "caption": caption,
+            "audio": (i.get("musicInfo") or {}).get("musicName", "Original Audio"),
+            "views": views
+        })
 
-    filtered = extract_reels(items, strict=True)
-    if not filtered:
-        print("Strict filtering returned 0 reels. Falling back to scraping whole Instagram (removing filters).")
-        filtered = extract_reels(items, strict=False)
-        
-    new_learned_tags = set()
-    for f_item in filtered:
-        i = f_item["_raw"]
-        del f_item["_raw"] # remove from final data to save tokens
-        caption = f_item["caption"]
-        
-        # Self-learning hashtags
-        found_tags = i.get("hashtags", [])
-        if not found_tags:
-            found_tags = re.findall(r"#(\w+)", caption)
-            
-        for tag in found_tags:
-            tag_lower = tag.lower()
-            if any(k in tag_lower for k in ["kolkata", "bengali", "calcutta", "howrah", "bong"]):
-                if tag_lower not in all_tags:
-                    new_learned_tags.add(tag_lower)
-                    
-    # Save newly learned tags
-    if new_learned_tags:
-        print(f"Learned {len(new_learned_tags)} new tags! Adding to bangali_creators.txt")
-        all_tags.extend(list(new_learned_tags))
-        # Deduplicate and sort
-        all_tags = sorted(list(set(all_tags)))
-        with open("bangali_creators.txt", "w") as f:
-            for tag in all_tags:
-                f.write(f"{tag}\n")
-                
     return filtered
 
 def summarize_trends(data):
