@@ -107,7 +107,11 @@ def summarize_trends(data):
                 timeout=45
             )
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                content = response.json().get("choices", [{}])[0].get("message", {}).get("content")
+                if content and str(content).strip() and str(content).strip().lower() != "null":
+                    return str(content).strip()
+                else:
+                    print(f"{model} returned null or empty content. Trying next...")
             else:
                 print(f"{model} failed: {response.status_code} - {response.text}")
         except Exception as e:
